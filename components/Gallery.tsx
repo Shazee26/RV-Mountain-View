@@ -16,6 +16,7 @@ const Gallery: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,21 +71,31 @@ const Gallery: React.FC = () => {
     }
 
     setIsUploading(true);
+    setUploadProgress(0);
+
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
       const filePath = `uploads/${fileName}`;
 
+      // 1. Upload to Supabase Storage with progress tracking
       const { error: uploadError } = await supabase.storage
         .from('gallery')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          onUploadProgress: (progress) => {
+            const percent = (progress.loaded / progress.total) * 100;
+            setUploadProgress(Math.round(percent));
+          },
+        });
 
       if (uploadError) throw uploadError;
 
+      // 2. Get Public URL
       const { data: { publicUrl } } = supabase.storage
         .from('gallery')
         .getPublicUrl(filePath);
 
+      // 3. Save Record to Database
       const newImageRecord = {
         url: publicUrl,
         title: file.name.split('.')[0] || "New Memory",
@@ -108,6 +119,7 @@ const Gallery: React.FC = () => {
       setToast({ message: err.message || "Failed to upload image.", type: 'error' });
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -116,7 +128,6 @@ const Gallery: React.FC = () => {
     
     setIsSaving(true);
     try {
-      // If it has an ID, it's in Supabase
       if (selectedImage.id) {
         const { error } = await supabase
           .from('gallery_images')
@@ -130,7 +141,6 @@ const Gallery: React.FC = () => {
         if (error) throw error;
       }
 
-      // Update local state for immediate feedback
       setImages(prev => prev.map(img => 
         img.url === selectedImage.url ? { ...img, ...editForm } : img
       ));
@@ -209,19 +219,36 @@ const Gallery: React.FC = () => {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`relative mb-12 p-8 md:p-12 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center ${
+          className={`relative mb-12 p-8 md:p-12 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center overflow-hidden ${
             isDragging 
               ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' 
               : 'border-stone-200 bg-white'
-          } ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+          } ${isUploading ? 'opacity-90' : ''}`}
         >
+          {/* Animated Progress Overlay */}
+          {isUploading && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/90 backdrop-blur-[2px] animate-in fade-in duration-300">
+               <div className="p-4 rounded-full mb-4 bg-emerald-100 text-emerald-600">
+                <Icon name="Loader2" size={48} className="animate-spin" />
+              </div>
+              <h3 className="text-xl font-bold text-stone-800 mb-2">Uploading Memory...</h3>
+              <div className="w-64 h-2 bg-stone-100 rounded-full overflow-hidden mb-2">
+                <div 
+                  className="h-full bg-emerald-600 transition-all duration-300 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+              <p className="text-emerald-700 font-bold text-sm">{uploadProgress}% Complete</p>
+            </div>
+          )}
+
           <div className={`p-4 rounded-full mb-4 transition-colors ${isDragging ? 'bg-emerald-200 text-emerald-700' : 'bg-stone-100 text-stone-400'}`}>
-            <Icon name={isUploading ? "Loader2" : (isDragging ? "Download" : "UploadCloud")} size={48} className={isUploading ? 'animate-spin' : ''} />
+            <Icon name={isDragging ? "Download" : "UploadCloud"} size={48} />
           </div>
           
           <div className="max-w-md w-full space-y-4">
             <h3 className="text-xl font-bold text-stone-800">
-              {isUploading ? "Processing..." : (isDragging ? "Drop to upload image" : "Upload your park memories")}
+              {isDragging ? "Drop to upload image" : "Upload your park memories"}
             </h3>
             <p className="text-stone-500 text-sm">
               Drag and drop your photos here, or use the controls below to select a file.
@@ -234,8 +261,9 @@ const Gallery: React.FC = () => {
                 value={uploadDescription}
                 onChange={(e) => setUploadDescription(e.target.value)}
                 className="flex-1 px-4 py-2 bg-stone-50 border border-stone-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                disabled={isUploading}
               />
-              <label className="cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-2 rounded-full font-bold hover:bg-emerald-700 transition-all shadow-md whitespace-nowrap">
+              <label className={`cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-2 rounded-full font-bold hover:bg-emerald-700 transition-all shadow-md whitespace-nowrap ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                 <Icon name="Plus" size={18} />
                 <span>Select File</span>
                 <input 
@@ -251,10 +279,10 @@ const Gallery: React.FC = () => {
 
           {/* Toast Notification */}
           {toast && (
-            <div className={`absolute -bottom-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-2 duration-300 z-50 ${
-              toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-800 text-white'
+            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-2 duration-300 z-50 ${
+              toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-stone-900 text-white'
             }`}>
-              <Icon name={toast.type === 'error' ? 'AlertCircle' : 'CheckCircle'} size={20} />
+              <Icon name={toast.type === 'error' ? 'AlertCircle' : 'CheckCircle'} size={20} className={toast.type === 'success' ? 'text-emerald-400' : ''} />
               <span className="text-sm font-bold whitespace-nowrap">{toast.message}</span>
               <button onClick={() => setToast(null)} className="ml-2 hover:opacity-70">
                 <Icon name="X" size={16} />
