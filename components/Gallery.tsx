@@ -4,6 +4,7 @@ import { GALLERY_IMAGES } from '../constants';
 import { GalleryImage } from '../types';
 import Icon from './Icon';
 import { supabase } from '../services/supabase';
+import { GoogleGenAI } from "@google/genai";
 
 const Gallery: React.FC = () => {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -17,6 +18,7 @@ const Gallery: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -52,7 +54,7 @@ const Gallery: React.FC = () => {
     }
   }, [toast]);
 
-  // Defined standard categories to ensure "Park" and "Scenery" are always present
+  // Defined standard categories
   const categories = useMemo(() => {
     const standardCategories = ['Park', 'Scenery', 'Facilities'];
     const dynamicCats = images.map(img => img.category);
@@ -65,6 +67,21 @@ const Gallery: React.FC = () => {
     return images.filter(img => img.category === filter);
   }, [images, filter]);
 
+  // Utility to convert file to base64
+  const fileToGenerativePart = async (file: File) => {
+    const base64EncodedDataPromise = new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]);
+      };
+      reader.readAsDataURL(file);
+    });
+    return {
+      inlineData: { data: await base64EncodedDataPromise as string, mimeType: file.type },
+    };
+  };
+
   const processFile = async (file: File) => {
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     
@@ -74,16 +91,49 @@ const Gallery: React.FC = () => {
       return;
     }
 
-    // SMART CATEGORY DETECTION
-    const sceneryKeywords = ['sunset', 'mountain', 'landscape', 'scenery', 'view', 'peak', 'desert', 'horizon', 'sky', 'clouds', 'nature'];
-    const fileNameLower = file.name.toLowerCase();
-    const detectedCategory = sceneryKeywords.some(keyword => fileNameLower.includes(keyword)) ? 'Scenery' : 'Park';
-    
-    // Auto-update the category state for the current upload
-    setUploadCategory(detectedCategory);
-
     setIsUploading(true);
+    setIsAnalyzing(true);
     setUploadProgress(0);
+
+    let detectedCategory = 'Park';
+
+    // AI VISION CATEGORY DETECTION
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const imagePart = await fileToGenerativePart(file);
+      const prompt = "Analyze this image for an RV Park website. Categorize it into exactly one of these labels: Scenery (landscapes, mountains, sunsets, desert), Park (RVs, camping sites, hookups), Facilities (bathrooms, laundry, office, wifi signs), or General. Respond with ONLY the label.";
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [imagePart, { text: prompt }] }],
+      });
+      
+      const aiResponse = response.text?.trim() || 'Park';
+      // Basic validation to ensure it's one of our categories
+      const validCategories = ['Scenery', 'Park', 'Facilities', 'General'];
+      detectedCategory = validCategories.find(c => aiResponse.includes(c)) || 'Park';
+    } catch (aiError) {
+      console.warn('AI analysis failed, falling back to keywords:', aiError);
+      
+      // EXPANDED FALLBACK KEYWORD DETECTION
+      const keywords: Record<string, string[]> = {
+        'Scenery': ['sunset', 'mountain', 'landscape', 'scenery', 'view', 'peak', 'desert', 'horizon', 'sky', 'clouds', 'nature', 'stars', 'night', 'vista', 'panorama', 'sunrise', 'rocks', 'peaks'],
+        'Park': ['rv', 'camper', 'rig', 'site', 'lot', 'pad', 'parking', 'campground', 'camping', 'trailer', 'motorhome', 'bus', 'coach', 'fifth wheel', 'van', 'tent'],
+        'Facilities': ['laundry', 'shower', 'restroom', 'wifi', 'office', 'pool', 'gym', 'utility', 'hookup', 'electric', 'water', 'sewer', 'bath', 'wash', 'sink']
+      };
+
+      const fileNameLower = file.name.toLowerCase();
+      for (const [cat, wordList] of Object.entries(keywords)) {
+        if (wordList.some(keyword => fileNameLower.includes(keyword))) {
+          detectedCategory = cat;
+          break;
+        }
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
+
+    setUploadCategory(detectedCategory);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -108,8 +158,8 @@ const Gallery: React.FC = () => {
       const newImageRecord = {
         url: publicUrl,
         title: file.name.split('.')[0].replace(/[_-]/g, ' ') || "New Memory",
-        category: detectedCategory, // Use the detected one directly
-        description: uploadDescription.trim() || `Beautiful ${detectedCategory.toLowerCase()} shot at Mountain View RV Park.`
+        category: detectedCategory,
+        description: uploadDescription.trim() || `Auto-categorized as ${detectedCategory.toLowerCase()} at Mountain View RV Park.`
       };
 
       const { error: dbError } = await supabase
@@ -118,11 +168,10 @@ const Gallery: React.FC = () => {
 
       if (dbError) throw dbError;
 
-      // Provide a moment for the user to see 100%
       setUploadProgress(100);
       await new Promise(r => setTimeout(r, 500));
 
-      setToast({ message: "Memory captured! Image uploaded successfully.", type: 'success' });
+      setToast({ message: `Success! Categorized as ${detectedCategory}.`, type: 'success' });
       setUploadDescription('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       
@@ -242,25 +291,33 @@ const Gallery: React.FC = () => {
           {isUploading && (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm animate-in fade-in duration-300">
                <div className="p-6 rounded-full mb-6 bg-emerald-50 text-emerald-600 shadow-inner">
-                <Icon name="UploadCloud" size={48} className={uploadProgress < 100 ? "animate-bounce" : ""} />
+                {isAnalyzing ? (
+                  <Icon name="Brain" size={48} className="animate-pulse text-emerald-500" />
+                ) : (
+                  <Icon name="UploadCloud" size={48} className={uploadProgress < 100 ? "animate-bounce" : ""} />
+                )}
               </div>
               <h3 className="text-2xl font-bold text-stone-900 mb-2">
-                {uploadProgress < 100 ? "Uploading your photo..." : "Finalizing..."}
+                {isAnalyzing ? "AI is analyzing content..." : uploadProgress < 100 ? "Uploading your photo..." : "Finalizing..."}
               </h3>
-              <p className="text-stone-500 text-sm mb-6">Uploading to Mountain View Storage</p>
+              <p className="text-stone-500 text-sm mb-6">
+                {isAnalyzing ? "Determining best category via Gemini Vision" : "Securely storing your West Texas memory"}
+              </p>
               
-              <div className="w-full max-w-xs px-4">
-                <div className="w-full h-3 bg-stone-100 rounded-full overflow-hidden shadow-inner mb-2">
-                  <div 
-                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300 ease-out"
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
+              {!isAnalyzing && (
+                <div className="w-full max-w-xs px-4">
+                  <div className="w-full h-3 bg-stone-100 rounded-full overflow-hidden shadow-inner mb-2">
+                    <div 
+                      className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
+                    <span className="text-emerald-600">{uploadProgress}%</span>
+                    <span className="text-stone-400">Please stay on this page</span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
-                  <span className="text-emerald-600">{uploadProgress}%</span>
-                  <span className="text-stone-400">Please stay on this page</span>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -273,7 +330,7 @@ const Gallery: React.FC = () => {
               {isDragging ? "Drop to upload image" : "Share Your Experience"}
             </h3>
             <p className="text-stone-500 text-sm">
-              Drag and drop your RV life photos here. We'll automatically suggest a category for you!
+              Drag and drop your RV life photos here. Our <strong>Gemini AI</strong> will automatically analyze the image to categorize it!
             </p>
 
             <div className="flex flex-col gap-4 pt-4">
