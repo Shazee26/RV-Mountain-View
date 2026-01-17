@@ -9,10 +9,14 @@ const Gallery: React.FC = () => {
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [filter, setFilter] = useState<string>('All');
   const [selectedImage, setSelectedImage] = useState<GalleryImage | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<GalleryImage>>({});
+  
   const [uploadDescription, setUploadDescription] = useState<string>('');
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,19 +75,16 @@ const Gallery: React.FC = () => {
       const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
       const filePath = `uploads/${fileName}`;
 
-      // 1. Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('gallery')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // 2. Get Public URL
       const { data: { publicUrl } } = supabase.storage
         .from('gallery')
         .getPublicUrl(filePath);
 
-      // 3. Save Record to Database
       const newImageRecord = {
         url: publicUrl,
         title: file.name.split('.')[0] || "New Memory",
@@ -101,7 +102,6 @@ const Gallery: React.FC = () => {
       setUploadDescription('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       
-      // Refresh list
       fetchImages();
     } catch (err: any) {
       console.error('Upload error:', err);
@@ -109,6 +109,50 @@ const Gallery: React.FC = () => {
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedImage || !isEditing) return;
+    
+    setIsSaving(true);
+    try {
+      // If it has an ID, it's in Supabase
+      if (selectedImage.id) {
+        const { error } = await supabase
+          .from('gallery_images')
+          .update({
+            title: editForm.title,
+            category: editForm.category,
+            description: editForm.description
+          })
+          .eq('id', selectedImage.id);
+
+        if (error) throw error;
+      }
+
+      // Update local state for immediate feedback
+      setImages(prev => prev.map(img => 
+        img.url === selectedImage.url ? { ...img, ...editForm } : img
+      ));
+      
+      setSelectedImage({ ...selectedImage, ...editForm });
+      setIsEditing(false);
+      setToast({ message: "Image details updated successfully!", type: 'success' });
+    } catch (err: any) {
+      console.error('Update error:', err);
+      setToast({ message: err.message || "Failed to save changes.", type: 'error' });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const startEditing = () => {
+    setEditForm({
+      title: selectedImage?.title,
+      category: selectedImage?.category,
+      description: selectedImage?.description
+    });
+    setIsEditing(true);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -224,7 +268,10 @@ const Gallery: React.FC = () => {
           {filteredImages.map((img, idx) => (
             <div 
               key={idx} 
-              onClick={() => setSelectedImage(img)}
+              onClick={() => {
+                setSelectedImage(img);
+                setIsEditing(false);
+              }}
               className="relative group overflow-hidden rounded-2xl md:rounded-3xl break-inside-avoid shadow-lg transition-all hover:scale-[1.02] cursor-pointer"
             >
               <img 
@@ -271,32 +318,111 @@ const Gallery: React.FC = () => {
       {selectedImage && (
         <div 
           className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-8"
-          onClick={() => setSelectedImage(null)}
+          onClick={() => {
+            setSelectedImage(null);
+            setIsEditing(false);
+          }}
         >
           <div className="absolute inset-0 bg-stone-950/95 backdrop-blur-md"></div>
-          <button 
-            className="absolute top-6 right-6 text-white hover:text-emerald-400 transition-colors z-10 p-2"
-            onClick={() => setSelectedImage(null)}
-          >
-            <Icon name="X" size={32} />
-          </button>
+          
+          <div className="absolute top-6 right-6 flex items-center gap-4 z-10">
+            {!isEditing && (
+              <button 
+                className="text-white/60 hover:text-emerald-400 transition-colors flex items-center gap-2 font-bold text-sm bg-white/5 px-4 py-2 rounded-full border border-white/10"
+                onClick={(e) => { e.stopPropagation(); startEditing(); }}
+              >
+                <Icon name="Edit3" size={18} />
+                <span>Edit Details</span>
+              </button>
+            )}
+            <button 
+              className="text-white hover:text-emerald-400 transition-colors p-2"
+              onClick={() => setSelectedImage(null)}
+            >
+              <Icon name="X" size={32} />
+            </button>
+          </div>
           
           <div 
-            className="relative max-w-5xl w-full flex flex-col items-center justify-center gap-6"
+            className="relative max-w-5xl w-full flex flex-col lg:flex-row items-center justify-center gap-8"
             onClick={e => e.stopPropagation()}
           >
-            <img 
-              src={selectedImage.url} 
-              alt={selectedImage.title} 
-              className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-2xl"
-            />
-            <div className="text-center text-white space-y-2 max-w-2xl px-4">
-              <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">{selectedImage.category}</span>
-              <h3 className="text-2xl md:text-4xl font-bold">{selectedImage.title}</h3>
-              {selectedImage.description && (
-                <p className="text-stone-300 text-sm md:text-lg leading-relaxed mt-2 italic font-light">
-                  "{selectedImage.description}"
-                </p>
+            <div className="w-full lg:w-2/3 flex items-center justify-center">
+              <img 
+                src={selectedImage.url} 
+                alt={selectedImage.title} 
+                className="max-w-full max-h-[60vh] lg:max-h-[80vh] object-contain rounded-xl shadow-2xl"
+              />
+            </div>
+            
+            <div className="w-full lg:w-1/3 text-white space-y-4 px-4 text-left">
+              {isEditing ? (
+                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Title</label>
+                    <input 
+                      type="text" 
+                      value={editForm.title}
+                      onChange={e => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-lg font-bold"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Category</label>
+                    <select 
+                      value={editForm.category}
+                      onChange={e => setEditForm(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full bg-stone-800 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      {categories.filter(c => c !== 'All').map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Description</label>
+                    <textarea 
+                      value={editForm.description}
+                      onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                      rows={4}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-stone-300"
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button 
+                      onClick={handleSaveEdit}
+                      disabled={isSaving}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isSaving && <Icon name="Loader2" size={18} className="animate-spin" />}
+                      {isSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                    <button 
+                      onClick={() => setIsEditing(false)}
+                      className="px-6 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="animate-in fade-in duration-300">
+                  <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">{selectedImage.category}</span>
+                  <h3 className="text-3xl lg:text-4xl font-bold mt-1 mb-4 leading-tight">{selectedImage.title}</h3>
+                  {selectedImage.description && (
+                    <p className="text-stone-300 text-base lg:text-lg leading-relaxed italic font-light bg-white/5 p-4 rounded-2xl border border-white/5">
+                      "{selectedImage.description}"
+                    </p>
+                  )}
+                  <div className="pt-8 border-t border-white/10 mt-8 flex items-center gap-2 text-stone-500 text-xs font-bold uppercase tracking-widest">
+                    <Icon name="Calendar" size={14} />
+                    <span>Mountain View Archive</span>
+                  </div>
+                </div>
               )}
             </div>
           </div>

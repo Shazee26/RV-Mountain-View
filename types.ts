@@ -26,6 +26,7 @@ export interface Message {
 }
 
 export interface GalleryImage {
+  id?: string | number;
   url: string;
   title: string;
   category: string;
