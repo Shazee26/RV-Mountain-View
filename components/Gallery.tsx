@@ -74,6 +74,14 @@ const Gallery: React.FC = () => {
       return;
     }
 
+    // SMART CATEGORY DETECTION
+    const sceneryKeywords = ['sunset', 'mountain', 'landscape', 'scenery', 'view', 'peak', 'desert', 'horizon', 'sky', 'clouds', 'nature'];
+    const fileNameLower = file.name.toLowerCase();
+    const detectedCategory = sceneryKeywords.some(keyword => fileNameLower.includes(keyword)) ? 'Scenery' : 'Park';
+    
+    // Auto-update the category state for the current upload
+    setUploadCategory(detectedCategory);
+
     setIsUploading(true);
     setUploadProgress(0);
 
@@ -99,9 +107,9 @@ const Gallery: React.FC = () => {
 
       const newImageRecord = {
         url: publicUrl,
-        title: file.name.split('.')[0] || "New Memory",
-        category: uploadCategory,
-        description: uploadDescription.trim() || "A beautiful moment at Mountain View RV Park."
+        title: file.name.split('.')[0].replace(/[_-]/g, ' ') || "New Memory",
+        category: detectedCategory, // Use the detected one directly
+        description: uploadDescription.trim() || `Beautiful ${detectedCategory.toLowerCase()} shot at Mountain View RV Park.`
       };
 
       const { error: dbError } = await supabase
@@ -110,14 +118,18 @@ const Gallery: React.FC = () => {
 
       if (dbError) throw dbError;
 
-      setToast({ message: "Image uploaded successfully!", type: 'success' });
+      // Provide a moment for the user to see 100%
+      setUploadProgress(100);
+      await new Promise(r => setTimeout(r, 500));
+
+      setToast({ message: "Memory captured! Image uploaded successfully.", type: 'success' });
       setUploadDescription('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       
       fetchImages();
     } catch (err: any) {
       console.error('Upload error:', err);
-      setToast({ message: err.message || "Failed to upload image.", type: 'error' });
+      setToast({ message: err.message || "Something went wrong. Please check your connection and try again.", type: 'error' });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -220,66 +232,76 @@ const Gallery: React.FC = () => {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`relative mb-12 p-8 md:p-12 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center overflow-hidden ${
+          className={`relative mb-12 p-8 md:p-12 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center overflow-hidden min-h-[300px] ${
             isDragging 
               ? 'border-emerald-500 bg-emerald-50 scale-[1.01]' 
               : 'border-stone-200 bg-white'
-          } ${isUploading ? 'opacity-90' : ''}`}
+          }`}
         >
+          {/* Progress Overlay */}
           {isUploading && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/90 backdrop-blur-[2px] animate-in fade-in duration-300">
-               <div className="p-4 rounded-full mb-4 bg-emerald-100 text-emerald-600">
-                <Icon name="Loader2" size={48} className="animate-spin" />
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm animate-in fade-in duration-300">
+               <div className="p-6 rounded-full mb-6 bg-emerald-50 text-emerald-600 shadow-inner">
+                <Icon name="UploadCloud" size={48} className={uploadProgress < 100 ? "animate-bounce" : ""} />
               </div>
-              <h3 className="text-xl font-bold text-stone-800 mb-2">Uploading Memory...</h3>
-              <div className="w-64 h-2 bg-stone-100 rounded-full overflow-hidden mb-2">
-                <div 
-                  className="h-full bg-emerald-600 transition-all duration-300 ease-out"
-                  style={{ width: `${uploadProgress}%` }}
-                ></div>
+              <h3 className="text-2xl font-bold text-stone-900 mb-2">
+                {uploadProgress < 100 ? "Uploading your photo..." : "Finalizing..."}
+              </h3>
+              <p className="text-stone-500 text-sm mb-6">Uploading to Mountain View Storage</p>
+              
+              <div className="w-full max-w-xs px-4">
+                <div className="w-full h-3 bg-stone-100 rounded-full overflow-hidden shadow-inner mb-2">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest">
+                  <span className="text-emerald-600">{uploadProgress}%</span>
+                  <span className="text-stone-400">Please stay on this page</span>
+                </div>
               </div>
-              <p className="text-emerald-700 font-bold text-sm">{uploadProgress}% Complete</p>
             </div>
           )}
 
-          <div className={`p-4 rounded-full mb-4 transition-colors ${isDragging ? 'bg-emerald-200 text-emerald-700' : 'bg-stone-100 text-stone-400'}`}>
-            <Icon name={isDragging ? "Download" : "UploadCloud"} size={48} />
+          <div className={`p-4 rounded-full mb-4 transition-all duration-300 ${isDragging ? 'bg-emerald-200 text-emerald-700 scale-110' : 'bg-stone-100 text-stone-400'}`}>
+            <Icon name={isDragging ? "Download" : "Plus"} size={48} />
           </div>
           
           <div className="max-w-md w-full space-y-4">
             <h3 className="text-xl font-bold text-stone-800">
-              {isDragging ? "Drop to upload image" : "Upload your park memories"}
+              {isDragging ? "Drop to upload image" : "Share Your Experience"}
             </h3>
             <p className="text-stone-500 text-sm">
-              Drag and drop your photos here, or use the controls below to select a file.
+              Drag and drop your RV life photos here. We'll automatically suggest a category for you!
             </p>
 
             <div className="flex flex-col gap-4 pt-4">
               <div className="flex flex-col sm:flex-row gap-2">
                 <input 
                   type="text" 
-                  placeholder="Add a description (optional)..."
+                  placeholder="Tell us about this photo..."
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
-                  className="flex-1 px-4 py-2 bg-stone-50 border border-stone-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                  className="flex-1 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                   disabled={isUploading}
                 />
                 <select 
                   value={uploadCategory}
                   onChange={(e) => setUploadCategory(e.target.value)}
-                  className="px-4 py-2 bg-stone-50 border border-stone-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                  className="px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer"
                   disabled={isUploading}
                 >
-                  {categories.filter(c => c !== 'All').map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
+                  <option value="Park">Park Life</option>
+                  <option value="Scenery">Scenery</option>
+                  <option value="Facilities">Facilities</option>
                   <option value="General">General</option>
                 </select>
               </div>
               
-              <label className={`cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-2 rounded-full font-bold hover:bg-emerald-700 transition-all shadow-md whitespace-nowrap ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                <Icon name="Plus" size={18} />
-                <span>Select File & Upload</span>
+              <label className={`cursor-pointer group flex items-center justify-center gap-3 bg-stone-900 text-white px-8 py-4 rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-xl whitespace-nowrap ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Icon name="Image" size={20} className="group-hover:scale-110 transition-transform" />
+                <span>Select & Upload Photo</span>
                 <input 
                   ref={fileInputRef}
                   type="file" 
@@ -291,13 +313,21 @@ const Gallery: React.FC = () => {
             </div>
           </div>
 
+          {/* Toast Notification Enhancement */}
           {toast && (
-            <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-2 duration-300 z-50 ${
-              toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-stone-900 text-white'
+            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50 min-w-[300px] border border-white/10 ${
+              toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-700 text-white'
             }`}>
-              <Icon name={toast.type === 'error' ? 'AlertCircle' : 'CheckCircle'} size={20} className={toast.type === 'success' ? 'text-emerald-400' : ''} />
-              <span className="text-sm font-bold whitespace-nowrap">{toast.message}</span>
-              <button onClick={() => setToast(null)} className="ml-2 hover:opacity-70">
+              <div className="bg-white/20 p-2 rounded-lg">
+                <Icon name={toast.type === 'error' ? 'AlertTriangle' : 'CheckCircle2'} size={20} />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-bold uppercase tracking-widest opacity-70">
+                  {toast.type === 'error' ? 'Upload Failed' : 'Upload Success'}
+                </p>
+                <p className="text-sm font-medium">{toast.message}</p>
+              </div>
+              <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
                 <Icon name="X" size={16} />
               </button>
             </div>
