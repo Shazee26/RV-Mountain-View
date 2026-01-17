@@ -13,6 +13,7 @@ const Gallery: React.FC = () => {
   const [editForm, setEditForm] = useState<Partial<GalleryImage>>({});
   
   const [uploadDescription, setUploadDescription] = useState<string>('');
+  const [uploadCategory, setUploadCategory] = useState<string>('Scenery');
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -51,9 +52,12 @@ const Gallery: React.FC = () => {
     }
   }, [toast]);
 
+  // Defined standard categories to ensure "Scenery" is always present
   const categories = useMemo(() => {
-    const cats = new Set(images.map(img => img.category));
-    return ['All', ...Array.from(cats)];
+    const standardCategories = ['Scenery', 'Park', 'Facilities'];
+    const dynamicCats = images.map(img => img.category);
+    const combined = new Set(['All', ...standardCategories, ...dynamicCats]);
+    return Array.from(combined);
   }, [images]);
 
   const filteredImages = useMemo(() => {
@@ -78,7 +82,6 @@ const Gallery: React.FC = () => {
       const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
       const filePath = `uploads/${fileName}`;
 
-      // 1. Upload to Supabase Storage with progress tracking
       const { error: uploadError } = await supabase.storage
         .from('gallery')
         .upload(filePath, file, {
@@ -90,16 +93,14 @@ const Gallery: React.FC = () => {
 
       if (uploadError) throw uploadError;
 
-      // 2. Get Public URL
       const { data: { publicUrl } } = supabase.storage
         .from('gallery')
         .getPublicUrl(filePath);
 
-      // 3. Save Record to Database
       const newImageRecord = {
         url: publicUrl,
         title: file.name.split('.')[0] || "New Memory",
-        category: 'Park',
+        category: uploadCategory,
         description: uploadDescription.trim() || "A beautiful moment at Mountain View RV Park."
       };
 
@@ -225,7 +226,6 @@ const Gallery: React.FC = () => {
               : 'border-stone-200 bg-white'
           } ${isUploading ? 'opacity-90' : ''}`}
         >
-          {/* Animated Progress Overlay */}
           {isUploading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/90 backdrop-blur-[2px] animate-in fade-in duration-300">
                <div className="p-4 rounded-full mb-4 bg-emerald-100 text-emerald-600">
@@ -254,18 +254,32 @@ const Gallery: React.FC = () => {
               Drag and drop your photos here, or use the controls below to select a file.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-2 pt-4">
-              <input 
-                type="text" 
-                placeholder="Add a description (optional)..."
-                value={uploadDescription}
-                onChange={(e) => setUploadDescription(e.target.value)}
-                className="flex-1 px-4 py-2 bg-stone-50 border border-stone-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-                disabled={isUploading}
-              />
+            <div className="flex flex-col gap-4 pt-4">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input 
+                  type="text" 
+                  placeholder="Add a description (optional)..."
+                  value={uploadDescription}
+                  onChange={(e) => setUploadDescription(e.target.value)}
+                  className="flex-1 px-4 py-2 bg-stone-50 border border-stone-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                  disabled={isUploading}
+                />
+                <select 
+                  value={uploadCategory}
+                  onChange={(e) => setUploadCategory(e.target.value)}
+                  className="px-4 py-2 bg-stone-50 border border-stone-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                  disabled={isUploading}
+                >
+                  {categories.filter(c => c !== 'All').map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                  <option value="General">General</option>
+                </select>
+              </div>
+              
               <label className={`cursor-pointer flex items-center justify-center gap-2 bg-emerald-600 text-white px-6 py-2 rounded-full font-bold hover:bg-emerald-700 transition-all shadow-md whitespace-nowrap ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
                 <Icon name="Plus" size={18} />
-                <span>Select File</span>
+                <span>Select File & Upload</span>
                 <input 
                   ref={fileInputRef}
                   type="file" 
@@ -277,7 +291,6 @@ const Gallery: React.FC = () => {
             </div>
           </div>
 
-          {/* Toast Notification */}
           {toast && (
             <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-xl flex items-center gap-3 animate-in slide-in-from-bottom-2 duration-300 z-50 ${
               toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-stone-900 text-white'
