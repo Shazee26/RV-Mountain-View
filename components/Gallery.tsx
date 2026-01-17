@@ -21,6 +21,7 @@ const Gallery: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -218,6 +219,48 @@ const Gallery: React.FC = () => {
     }
   };
 
+  const handleDeleteImage = async () => {
+    if (!selectedImage || !selectedImage.id) return;
+
+    const confirmed = window.confirm("Are you sure you want to delete this memory? This action cannot be undone.");
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      // 1. Delete from database
+      const { error: dbError } = await supabase
+        .from('gallery_images')
+        .delete()
+        .eq('id', selectedImage.id);
+
+      if (dbError) throw dbError;
+
+      // 2. Delete from storage
+      // Storage path extraction: get the filename from the public URL
+      const urlParts = selectedImage.url.split('/');
+      const fileName = urlParts[urlParts.length - 1];
+      const filePath = `uploads/${fileName}`;
+
+      const { error: storageError } = await supabase.storage
+        .from('gallery')
+        .remove([filePath]);
+
+      if (storageError) {
+        console.warn('Database record deleted, but storage removal failed:', storageError);
+      }
+
+      // 3. Update UI
+      setImages(prev => prev.filter(img => img.id !== selectedImage.id));
+      setSelectedImage(null);
+      setToast({ message: "Image removed from gallery.", type: 'success' });
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      setToast({ message: err.message || "Failed to delete image.", type: 'error' });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const startEditing = () => {
     setEditForm({
       title: selectedImage?.title,
@@ -380,7 +423,7 @@ const Gallery: React.FC = () => {
               </div>
               <div className="flex-1">
                 <p className="text-xs font-bold uppercase tracking-widest opacity-70">
-                  {toast.type === 'error' ? 'Upload Failed' : 'Upload Success'}
+                  {toast.type === 'error' ? 'Notification' : 'Upload Success'}
                 </p>
                 <p className="text-sm font-medium">{toast.message}</p>
               </div>
@@ -447,25 +490,41 @@ const Gallery: React.FC = () => {
         <div 
           className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-8"
           onClick={() => {
-            setSelectedImage(null);
-            setIsEditing(false);
+            if (!isDeleting && !isSaving) {
+              setSelectedImage(null);
+              setIsEditing(false);
+            }
           }}
         >
           <div className="absolute inset-0 bg-stone-950/95 backdrop-blur-md"></div>
           
           <div className="absolute top-6 right-6 flex items-center gap-4 z-10">
             {!isEditing && (
-              <button 
-                className="text-white/60 hover:text-emerald-400 transition-colors flex items-center gap-2 font-bold text-sm bg-white/5 px-4 py-2 rounded-full border border-white/10"
-                onClick={(e) => { e.stopPropagation(); startEditing(); }}
-              >
-                <Icon name="Edit3" size={18} />
-                <span>Edit Details</span>
-              </button>
+              <>
+                <button 
+                  className="text-white/60 hover:text-emerald-400 transition-colors flex items-center gap-2 font-bold text-sm bg-white/5 px-4 py-2 rounded-full border border-white/10"
+                  onClick={(e) => { e.stopPropagation(); startEditing(); }}
+                >
+                  <Icon name="Edit3" size={18} />
+                  <span>Edit Details</span>
+                </button>
+                {selectedImage.id && (
+                  <button 
+                    className="text-white/60 hover:text-red-400 transition-colors flex items-center gap-2 font-bold text-sm bg-white/5 px-4 py-2 rounded-full border border-white/10"
+                    onClick={(e) => { e.stopPropagation(); handleDeleteImage(); }}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? <Icon name="Loader2" size={18} className="animate-spin" /> : <Icon name="Trash2" size={18} />}
+                    <span>{isDeleting ? 'Deleting...' : 'Delete Memory'}</span>
+                  </button>
+                )}
+              </>
             )}
             <button 
               className="text-white hover:text-emerald-400 transition-colors p-2"
-              onClick={() => setSelectedImage(null)}
+              onClick={() => {
+                if (!isDeleting && !isSaving) setSelectedImage(null);
+              }}
             >
               <Icon name="X" size={32} />
             </button>
