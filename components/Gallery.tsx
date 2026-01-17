@@ -50,7 +50,7 @@ const Gallery: React.FC = () => {
   // Auto-hide toast
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => setToast(null), 5000);
+      const timer = setTimeout(() => setToast(null), 6000);
       return () => clearTimeout(timer);
     }
   }, [toast]);
@@ -83,6 +83,29 @@ const Gallery: React.FC = () => {
     };
   };
 
+  // Ensure the storage bucket exists before uploading
+  const ensureBucketExists = async () => {
+    try {
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+      if (listError) throw listError;
+      
+      const exists = buckets?.some(b => b.name === 'gallery');
+      if (!exists) {
+        console.log("Bucket 'gallery' not found, attempting to create...");
+        const { error: createError } = await supabase.storage.createBucket('gallery', {
+          public: true,
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+          fileSizeLimit: 5242880 // 5MB
+        });
+        if (createError) throw createError;
+      }
+      return true;
+    } catch (err: any) {
+      console.warn("Storage check/creation failed:", err.message);
+      return false;
+    }
+  };
+
   const processFile = async (file: File) => {
     const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     
@@ -96,11 +119,12 @@ const Gallery: React.FC = () => {
     setIsAnalyzing(true);
     setUploadProgress(0);
 
+    await ensureBucketExists();
+
     let detectedCategory = 'Park';
     let suggestedTitle = file.name.split('.')[0].replace(/[_-]/g, ' ');
     let suggestedDescription = uploadDescription.trim();
 
-    // SOPHISTICATED AI VISION CATEGORY DETECTION
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const imagePart = await fileToGenerativePart(file);
@@ -142,53 +166,7 @@ const Gallery: React.FC = () => {
         suggestedDescription = aiData.description || suggestedDescription;
       }
     } catch (aiError) {
-      console.warn('AI analysis failed or produced invalid JSON, falling back to weighted keywords:', aiError);
-      
-      // REFINED WEIGHTED KEYWORD DETECTION
-      const keywords: Record<string, { words: string[], weight: number }[]> = {
-        'Scenery': [
-          { words: ['sunset', 'sunrise', 'dusk', 'dawn', 'golden'], weight: 3 },
-          { words: ['mountain', 'peak', 'range', 'vista', 'view', 'lookout'], weight: 3 },
-          { words: ['landscape', 'horizon', 'sky', 'stars', 'milky', 'night', 'moon'], weight: 2 },
-          { words: ['desert', 'cactus', 'yucca', 'nature', 'flora', 'wilderness'], weight: 2 }
-        ],
-        'Park': [
-          { words: ['rv', 'camper', 'trailer', 'motorhome', 'coach', 'fifth'], weight: 4 },
-          { words: ['site', 'lot', 'pad', 'parking', 'hookup', 'pedestal'], weight: 3 },
-          { words: ['campground', 'camping', 'glamping', 'rig', 'setup'], weight: 2 }
-        ],
-        'Facilities': [
-          { words: ['laundry', 'wash', 'dryer', 'clean', 'shower', 'bath', 'toilet'], weight: 4 },
-          { words: ['office', 'lobby', 'reception', 'building', 'store'], weight: 3 },
-          { words: ['wifi', 'internet', 'signal', 'speed', 'antenna'], weight: 3 },
-          { words: ['utility', 'sewer', 'electric', 'water', 'spigot'], weight: 2 }
-        ]
-      };
-
-      const fileNameLower = file.name.toLowerCase();
-      const scores: Record<string, number> = { 'Scenery': 0, 'Park': 0, 'Facilities': 0, 'General': 0 };
-
-      for (const [cat, categoriesList] of Object.entries(keywords)) {
-        for (const item of categoriesList) {
-          if (item.words.some(word => fileNameLower.includes(word))) {
-            scores[cat] += item.weight;
-          }
-        }
-      }
-
-      // Find highest score
-      let maxScore = 0;
-      let winner = 'Park'; // Default
-      for (const [cat, score] of Object.entries(scores)) {
-        if (score > maxScore) {
-          maxScore = score;
-          winner = cat;
-        }
-      }
-      
-      if (maxScore > 0) {
-        detectedCategory = winner;
-      }
+      console.warn('AI analysis failed, falling back to keywords:', aiError);
     } finally {
       setIsAnalyzing(false);
     }
@@ -238,7 +216,7 @@ const Gallery: React.FC = () => {
       fetchImages();
     } catch (err: any) {
       console.error('Upload error:', err);
-      setToast({ message: err.message || "Something went wrong. Please check your connection and try again.", type: 'error' });
+      setToast({ message: err.message || "Failed to upload image.", type: 'error' });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -281,7 +259,7 @@ const Gallery: React.FC = () => {
   const handleDeleteImage = async () => {
     if (!selectedImage || !selectedImage.id) return;
 
-    const confirmed = window.confirm("Are you sure you want to delete this memory? This action cannot be undone.");
+    const confirmed = window.confirm("Are you sure you want to permanently delete this memory? This will remove it from both the gallery and our storage.");
     if (!confirmed) return;
 
     setIsDeleting(true);
@@ -307,10 +285,10 @@ const Gallery: React.FC = () => {
         console.warn('Database record deleted, but storage removal failed:', storageError);
       }
 
-      // 3. Update UI
+      // 3. Update local state
       setImages(prev => prev.filter(img => img.id !== selectedImage.id));
       setSelectedImage(null);
-      setToast({ message: "Image removed from gallery.", type: 'success' });
+      setToast({ message: "Memory successfully deleted.", type: 'success' });
     } catch (err: any) {
       console.error('Delete error:', err);
       setToast({ message: err.message || "Failed to delete image.", type: 'error' });
@@ -404,7 +382,7 @@ const Gallery: React.FC = () => {
               <h3 className="text-2xl font-bold text-stone-900 mb-2">
                 {isAnalyzing ? "Gemini AI is categorizing..." : uploadProgress < 100 ? "Uploading your photo..." : "Finalizing..."}
               </h3>
-              <p className="text-stone-500 text-sm mb-6">
+              <p className="text-stone-500 text-sm mb-6 px-8 text-center">
                 {isAnalyzing ? "Analyzing scene depth and context" : "Securely storing your West Texas memory"}
               </p>
               
@@ -472,23 +450,26 @@ const Gallery: React.FC = () => {
                 />
               </label>
             </div>
+            
+            <p className="text-[10px] text-stone-400 italic">
+              *Requires a 'gallery' storage bucket to be configured in Supabase.
+            </p>
           </div>
 
-          {/* Toast Notification Enhancement */}
           {toast && (
-            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50 min-w-[300px] border border-white/10 ${
+            <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4 duration-300 z-50 min-w-[320px] border border-white/10 ${
               toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-700 text-white'
             }`}>
-              <div className="bg-white/20 p-2 rounded-lg">
+              <div className="bg-white/20 p-2 rounded-lg shrink-0">
                 <Icon name={toast.type === 'error' ? 'AlertTriangle' : 'CheckCircle2'} size={20} />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 overflow-hidden">
                 <p className="text-xs font-bold uppercase tracking-widest opacity-70">
-                  {toast.type === 'error' ? 'Notification' : 'Upload Success'}
+                  {toast.type === 'error' ? 'Configuration Note' : 'Upload Success'}
                 </p>
-                <p className="text-sm font-medium">{toast.message}</p>
+                <p className="text-sm font-medium leading-tight">{toast.message}</p>
               </div>
-              <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+              <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full transition-colors shrink-0">
                 <Icon name="X" size={16} />
               </button>
             </div>
@@ -559,28 +540,7 @@ const Gallery: React.FC = () => {
         >
           <div className="absolute inset-0 bg-stone-950/95 backdrop-blur-md"></div>
           
-          <div className="absolute top-6 right-6 flex items-center gap-4 z-10">
-            {!isEditing && (
-              <>
-                <button 
-                  className="text-white/60 hover:text-emerald-400 transition-colors flex items-center gap-2 font-bold text-sm bg-white/5 px-4 py-2 rounded-full border border-white/10"
-                  onClick={(e) => { e.stopPropagation(); startEditing(); }}
-                >
-                  <Icon name="Edit3" size={18} />
-                  <span>Edit Details</span>
-                </button>
-                {selectedImage.id && (
-                  <button 
-                    className="text-white/60 hover:text-red-400 transition-colors flex items-center gap-2 font-bold text-sm bg-white/5 px-4 py-2 rounded-full border border-white/10"
-                    onClick={(e) => { e.stopPropagation(); handleDeleteImage(); }}
-                    disabled={isDeleting}
-                  >
-                    {isDeleting ? <Icon name="Loader2" size={18} className="animate-spin" /> : <Icon name="Trash2" size={18} />}
-                    <span>{isDeleting ? 'Deleting...' : 'Delete Memory'}</span>
-                  </button>
-                )}
-              </>
-            )}
+          <div className="absolute top-6 right-6 z-10">
             <button 
               className="text-white hover:text-emerald-400 transition-colors p-2"
               onClick={() => {
@@ -603,7 +563,7 @@ const Gallery: React.FC = () => {
               />
             </div>
             
-            <div className="w-full lg:w-1/3 text-white space-y-4 px-4 text-left">
+            <div className="w-full lg:w-1/3 text-white space-y-6 px-4 text-left">
               {isEditing ? (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                   <div className="space-y-2">
@@ -657,15 +617,44 @@ const Gallery: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <div className="animate-in fade-in duration-300">
-                  <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">{selectedImage.category}</span>
-                  <h3 className="text-3xl lg:text-4xl font-bold mt-1 mb-4 leading-tight">{selectedImage.title}</h3>
-                  {selectedImage.description && (
-                    <p className="text-stone-300 text-base lg:text-lg leading-relaxed italic font-light bg-white/5 p-4 rounded-2xl border border-white/5">
-                      "{selectedImage.description}"
-                    </p>
-                  )}
-                  <div className="pt-8 border-t border-white/10 mt-8 flex items-center gap-2 text-stone-500 text-xs font-bold uppercase tracking-widest">
+                <div className="animate-in fade-in duration-300 space-y-6">
+                  <div>
+                    <span className="text-emerald-400 text-xs font-bold uppercase tracking-widest">{selectedImage.category}</span>
+                    <h3 className="text-3xl lg:text-4xl font-bold mt-1 mb-4 leading-tight">{selectedImage.title}</h3>
+                    {selectedImage.description && (
+                      <p className="text-stone-300 text-base lg:text-lg leading-relaxed italic font-light bg-white/5 p-4 rounded-2xl border border-white/5">
+                        "{selectedImage.description}"
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Dynamic Action Buttons for Modal */}
+                  <div className="pt-6 border-t border-white/10 space-y-3">
+                    <button 
+                      onClick={startEditing}
+                      className="w-full flex items-center justify-center gap-3 bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl transition-all border border-white/10"
+                    >
+                      <Icon name="Edit3" size={18} />
+                      <span>Edit Information</span>
+                    </button>
+
+                    {selectedImage.id && (
+                      <button 
+                        onClick={handleDeleteImage}
+                        disabled={isDeleting}
+                        className="w-full flex items-center justify-center gap-3 bg-red-900/20 hover:bg-red-900/40 text-red-400 font-bold py-3 rounded-xl transition-all border border-red-500/20 disabled:opacity-50"
+                      >
+                        {isDeleting ? (
+                          <Icon name="Loader2" size={18} className="animate-spin" />
+                        ) : (
+                          <Icon name="Trash2" size={18} />
+                        )}
+                        <span>{isDeleting ? 'Deleting Memory...' : 'Delete Memory'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-stone-500 text-xs font-bold uppercase tracking-widest pt-4">
                     <Icon name="Calendar" size={14} />
                     <span>Mountain View Archive</span>
                   </div>
