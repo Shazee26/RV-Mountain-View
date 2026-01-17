@@ -9,14 +9,14 @@ interface HeroProps {
 const Hero: React.FC<HeroProps> = ({ onExplore }) => {
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden">
-      {/* Background Image - West Texas / Mountains style */}
+      {/* Background Image - Real Park Sunset Photo */}
       <div className="absolute inset-0 z-0">
         <img
-          src="https://images.unsplash.com/photo-1502472992487-44c77d7bb9ec?auto=format&fit=crop&q=80&w=2000"
-          alt="West Texas Mountains"
+          src="input_file_6.png"
+          alt="Mountain View RV Park Sunset"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-stone-900/60"></div>
+        <div className="absolute inset-0 bg-stone-900/50"></div>
       </div>
 
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
@@ -32,7 +32,7 @@ const Hero: React.FC<HeroProps> = ({ onExplore }) => {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
             onClick={onExplore}
-            className="w-full sm:w-auto bg-emerald-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+            className="w-full sm:w-auto bg-emerald-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-xl shadow-emerald-600/30"
           >
             <Icon name="Map" size={20} />
             Explore Park

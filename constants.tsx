@@ -42,40 +42,76 @@ export const AMENITIES: Amenity[] = [
 
 export const GALLERY_IMAGES: GalleryImage[] = [
   {
-    url: "https://images.unsplash.com/photo-1523987355523-c7b5b0dd90a7?auto=format&fit=crop&q=80&w=1200",
-    title: "Mountain Sunset View",
-    category: "Scenery",
-    description: "Breathtaking views of the peaks as the sun dips below the horizon."
+    url: "input_file_15.png",
+    title: "Welcome to Mountain View",
+    category: "Facilities",
+    description: "Our iconic entrance gate welcoming travelers from across the country."
   },
   {
-    url: "https://images.unsplash.com/photo-1533873984035-25970ab07461?auto=format&fit=crop&q=80&w=1200",
-    title: "Spacious RV Sites",
+    url: "input_file_6.png",
+    title: "Vibrant Desert Sunset",
+    category: "Scenery",
+    description: "Experience the legendary gold and orange hues of a West Texas sunset."
+  },
+  {
+    url: "input_file_4.png",
+    title: "Spacious Pull-Throughs",
     category: "Park",
-    description: "Wide, clean concrete pads designed for even the largest rigs."
+    description: "Wide, easy-access sites designed to accommodate the largest RV rigs."
   },
   {
-    url: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&q=80&w=1200",
-    title: "Desert Horizon",
+    url: "input_file_10.png",
+    title: "Purple Twilight Skies",
     category: "Scenery",
-    description: "The vast, open beauty of the West Texas desert landscape."
+    description: "A breathtaking display of colors over our park as day turns to night."
   },
   {
-    url: "https://images.unsplash.com/photo-1517520287167-4bda64282b54?auto=format&fit=crop&q=80&w=1200",
-    title: "Van Horn Night Sky",
-    category: "Scenery",
-    description: "Zero light pollution makes for incredible stargazing opportunities."
-  },
-  {
-    url: "https://images.unsplash.com/photo-1506318137071-a8e063b4bc04?auto=format&fit=crop&q=80&w=1200",
-    title: "Camping Under the Stars",
+    url: "input_file_16.png",
+    title: "Shady Picnic Areas",
     category: "Park",
-    description: "Our park transforms into a celestial wonderland at night."
+    description: "Enjoy a meal outdoors with mature trees providing a natural canopy."
   },
   {
-    url: "https://images.unsplash.com/photo-1445991842772-097fea258e7b?auto=format&fit=crop&q=80&w=1200",
-    title: "Gateway to the Mountains",
+    url: "input_file_2.png",
+    title: "Mountain Horizons",
     category: "Scenery",
-    description: "The perfect starting point for your mountain adventure."
+    description: "Clear vistas of the surrounding peaks that give our park its name."
+  },
+  {
+    url: "input_file_7.png",
+    title: "Open Sky Camping",
+    category: "Park",
+    description: "The freedom of the high desert with all the modern comforts you expect."
+  },
+  {
+    url: "input_file_9.png",
+    title: "Mountain View Main Sign",
+    category: "Facilities",
+    description: "Look for our yellow sign on West Broadway in Van Horn."
+  },
+  {
+    url: "input_file_17.png",
+    title: "Camper's Paradise",
+    category: "Park",
+    description: "The perfect spot to park your van or motorhome for a relaxing stay."
+  },
+  {
+    url: "input_file_13.png",
+    title: "Moonlight Over the Rig",
+    category: "Park",
+    description: "Our sites are quiet and peaceful under the bright Texas moon."
+  },
+  {
+    url: "input_file_0.png",
+    title: "Silhouette Ridge",
+    category: "Scenery",
+    description: "The beauty of the desert flora against the fading evening light."
+  },
+  {
+    url: "input_file_12.png",
+    title: "Golden Hour Glow",
+    category: "Scenery",
+    description: "Everything turns to gold as the sun hits the horizon over the park."
   }
 ];
 
