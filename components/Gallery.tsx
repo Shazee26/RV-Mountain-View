@@ -13,7 +13,7 @@ const Gallery: React.FC = () => {
   const [editForm, setEditForm] = useState<Partial<GalleryImage>>({});
   
   const [uploadDescription, setUploadDescription] = useState<string>('');
-  const [uploadCategory, setUploadCategory] = useState<string>('Scenery');
+  const [uploadCategory, setUploadCategory] = useState<string>('Park');
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -52,9 +52,9 @@ const Gallery: React.FC = () => {
     }
   }, [toast]);
 
-  // Defined standard categories to ensure "Scenery" is always present
+  // Defined standard categories to ensure "Park" and "Scenery" are always present
   const categories = useMemo(() => {
-    const standardCategories = ['Scenery', 'Park', 'Facilities'];
+    const standardCategories = ['Park', 'Scenery', 'Facilities'];
     const dynamicCats = images.map(img => img.category);
     const combined = new Set(['All', ...standardCategories, ...dynamicCats]);
     return Array.from(combined);
