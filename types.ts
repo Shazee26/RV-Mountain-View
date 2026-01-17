@@ -29,4 +29,5 @@ export interface GalleryImage {
   url: string;
   title: string;
   category: string;
+  description?: string;
 }

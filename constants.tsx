@@ -44,32 +44,38 @@ export const GALLERY_IMAGES: GalleryImage[] = [
   {
     url: "https://images.unsplash.com/photo-1523987355523-c7b5b0dd90a7?auto=format&fit=crop&q=80&w=1200",
     title: "Mountain Sunset View",
-    category: "Scenery"
+    category: "Scenery",
+    description: "Breathtaking views of the peaks as the sun dips below the horizon."
   },
   {
     url: "https://images.unsplash.com/photo-1533873984035-25970ab07461?auto=format&fit=crop&q=80&w=1200",
     title: "Spacious RV Sites",
-    category: "Park"
+    category: "Park",
+    description: "Wide, clean concrete pads designed for even the largest rigs."
   },
   {
     url: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&q=80&w=1200",
     title: "Desert Horizon",
-    category: "Scenery"
+    category: "Scenery",
+    description: "The vast, open beauty of the West Texas desert landscape."
   },
   {
     url: "https://images.unsplash.com/photo-1517520287167-4bda64282b54?auto=format&fit=crop&q=80&w=1200",
     title: "Van Horn Night Sky",
-    category: "Scenery"
+    category: "Scenery",
+    description: "Zero light pollution makes for incredible stargazing opportunities."
   },
   {
     url: "https://images.unsplash.com/photo-1506318137071-a8e063b4bc04?auto=format&fit=crop&q=80&w=1200",
     title: "Camping Under the Stars",
-    category: "Park"
+    category: "Park",
+    description: "Our park transforms into a celestial wonderland at night."
   },
   {
     url: "https://images.unsplash.com/photo-1445991842772-097fea258e7b?auto=format&fit=crop&q=80&w=1200",
     title: "Gateway to the Mountains",
-    category: "Scenery"
+    category: "Scenery",
+    description: "The perfect starting point for your mountain adventure."
   }
 ];
 
