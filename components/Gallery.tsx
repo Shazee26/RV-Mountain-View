@@ -4,7 +4,7 @@ import { GALLERY_IMAGES } from '../constants';
 import { GalleryImage } from '../types';
 import Icon from './Icon';
 import { supabase } from '../services/supabase';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const Gallery: React.FC = () => {
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -55,9 +55,9 @@ const Gallery: React.FC = () => {
     }
   }, [toast]);
 
-  // Defined standard categories
+  // Defined standard categories including 'General'
   const categories = useMemo(() => {
-    const standardCategories = ['Park', 'Scenery', 'Facilities'];
+    const standardCategories = ['Park', 'Scenery', 'Facilities', 'General'];
     const dynamicCats = images.map(img => img.category);
     const combined = new Set(['All', ...standardCategories, ...dynamicCats]);
     return Array.from(combined);
@@ -97,38 +97,97 @@ const Gallery: React.FC = () => {
     setUploadProgress(0);
 
     let detectedCategory = 'Park';
+    let suggestedTitle = file.name.split('.')[0].replace(/[_-]/g, ' ');
+    let suggestedDescription = uploadDescription.trim();
 
-    // AI VISION CATEGORY DETECTION
+    // SOPHISTICATED AI VISION CATEGORY DETECTION
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const imagePart = await fileToGenerativePart(file);
-      const prompt = "Analyze this image for an RV Park website. Categorize it into exactly one of these labels: Scenery (landscapes, mountains, sunsets, desert), Park (RVs, camping sites, hookups), Facilities (bathrooms, laundry, office, wifi signs), or General. Respond with ONLY the label.";
       
+      const prompt = `Analyze this image for a Mountain View RV Park website in West Texas. 
+      Categorize it and suggest metadata in JSON format.
+      
+      Categories:
+      - Scenery: Landscapes, vast horizons, mountain ranges, sunsets, night sky/stargazing, desert flora (yucca, cacti).
+      - Park: RV sites, motorhomes, trailers, hookup pedestals, camping setups, concrete pads.
+      - Facilities: Office building, laundry room, restrooms/showers, wifi signs, utility areas.
+      - General: People enjoying activities, local area attractions, or anything else.
+      
+      Return ONLY valid JSON.`;
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: [{ parts: [imagePart, { text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              category: { type: Type.STRING, description: "Exactly one of: Scenery, Park, Facilities, General" },
+              confidence: { type: Type.NUMBER },
+              title: { type: Type.STRING, description: "A catchy 3-6 word title" },
+              description: { type: Type.STRING, description: "A poetic one-sentence description" }
+            },
+            required: ["category", "title", "description"]
+          }
+        }
       });
       
-      const aiResponse = response.text?.trim() || 'Park';
-      // Basic validation to ensure it's one of our categories
-      const validCategories = ['Scenery', 'Park', 'Facilities', 'General'];
-      detectedCategory = validCategories.find(c => aiResponse.includes(c)) || 'Park';
-    } catch (aiError) {
-      console.warn('AI analysis failed, falling back to keywords:', aiError);
+      const aiData = JSON.parse(response.text || '{}');
       
-      // EXPANDED FALLBACK KEYWORD DETECTION
-      const keywords: Record<string, string[]> = {
-        'Scenery': ['sunset', 'mountain', 'landscape', 'scenery', 'view', 'peak', 'desert', 'horizon', 'sky', 'clouds', 'nature', 'stars', 'night', 'vista', 'panorama', 'sunrise', 'rocks', 'peaks'],
-        'Park': ['rv', 'camper', 'rig', 'site', 'lot', 'pad', 'parking', 'campground', 'camping', 'trailer', 'motorhome', 'bus', 'coach', 'fifth wheel', 'van', 'tent'],
-        'Facilities': ['laundry', 'shower', 'restroom', 'wifi', 'office', 'pool', 'gym', 'utility', 'hookup', 'electric', 'water', 'sewer', 'bath', 'wash', 'sink']
+      if (aiData.category && ['Scenery', 'Park', 'Facilities', 'General'].includes(aiData.category)) {
+        detectedCategory = aiData.category;
+        suggestedTitle = aiData.title || suggestedTitle;
+        suggestedDescription = aiData.description || suggestedDescription;
+      }
+    } catch (aiError) {
+      console.warn('AI analysis failed or produced invalid JSON, falling back to weighted keywords:', aiError);
+      
+      // REFINED WEIGHTED KEYWORD DETECTION
+      const keywords: Record<string, { words: string[], weight: number }[]> = {
+        'Scenery': [
+          { words: ['sunset', 'sunrise', 'dusk', 'dawn', 'golden'], weight: 3 },
+          { words: ['mountain', 'peak', 'range', 'vista', 'view', 'lookout'], weight: 3 },
+          { words: ['landscape', 'horizon', 'sky', 'stars', 'milky', 'night', 'moon'], weight: 2 },
+          { words: ['desert', 'cactus', 'yucca', 'nature', 'flora', 'wilderness'], weight: 2 }
+        ],
+        'Park': [
+          { words: ['rv', 'camper', 'trailer', 'motorhome', 'coach', 'fifth'], weight: 4 },
+          { words: ['site', 'lot', 'pad', 'parking', 'hookup', 'pedestal'], weight: 3 },
+          { words: ['campground', 'camping', 'glamping', 'rig', 'setup'], weight: 2 }
+        ],
+        'Facilities': [
+          { words: ['laundry', 'wash', 'dryer', 'clean', 'shower', 'bath', 'toilet'], weight: 4 },
+          { words: ['office', 'lobby', 'reception', 'building', 'store'], weight: 3 },
+          { words: ['wifi', 'internet', 'signal', 'speed', 'antenna'], weight: 3 },
+          { words: ['utility', 'sewer', 'electric', 'water', 'spigot'], weight: 2 }
+        ]
       };
 
       const fileNameLower = file.name.toLowerCase();
-      for (const [cat, wordList] of Object.entries(keywords)) {
-        if (wordList.some(keyword => fileNameLower.includes(keyword))) {
-          detectedCategory = cat;
-          break;
+      const scores: Record<string, number> = { 'Scenery': 0, 'Park': 0, 'Facilities': 0, 'General': 0 };
+
+      for (const [cat, categoriesList] of Object.entries(keywords)) {
+        for (const item of categoriesList) {
+          if (item.words.some(word => fileNameLower.includes(word))) {
+            scores[cat] += item.weight;
+          }
         }
+      }
+
+      // Find highest score
+      let maxScore = 0;
+      let winner = 'Park'; // Default
+      for (const [cat, score] of Object.entries(scores)) {
+        if (score > maxScore) {
+          maxScore = score;
+          winner = cat;
+        }
+      }
+      
+      if (maxScore > 0) {
+        detectedCategory = winner;
       }
     } finally {
       setIsAnalyzing(false);
@@ -158,9 +217,9 @@ const Gallery: React.FC = () => {
 
       const newImageRecord = {
         url: publicUrl,
-        title: file.name.split('.')[0].replace(/[_-]/g, ' ') || "New Memory",
+        title: suggestedTitle,
         category: detectedCategory,
-        description: uploadDescription.trim() || `Auto-categorized as ${detectedCategory.toLowerCase()} at Mountain View RV Park.`
+        description: suggestedDescription || `A wonderful moment in the ${detectedCategory.toLowerCase()} section.`
       };
 
       const { error: dbError } = await supabase
@@ -172,7 +231,7 @@ const Gallery: React.FC = () => {
       setUploadProgress(100);
       await new Promise(r => setTimeout(r, 500));
 
-      setToast({ message: `Success! Categorized as ${detectedCategory}.`, type: 'success' });
+      setToast({ message: `Success! Smart-categorized as ${detectedCategory}.`, type: 'success' });
       setUploadDescription('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       
@@ -236,7 +295,6 @@ const Gallery: React.FC = () => {
       if (dbError) throw dbError;
 
       // 2. Delete from storage
-      // Storage path extraction: get the filename from the public URL
       const urlParts = selectedImage.url.split('/');
       const fileName = urlParts[urlParts.length - 1];
       const filePath = `uploads/${fileName}`;
@@ -335,16 +393,19 @@ const Gallery: React.FC = () => {
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm animate-in fade-in duration-300">
                <div className="p-6 rounded-full mb-6 bg-emerald-50 text-emerald-600 shadow-inner">
                 {isAnalyzing ? (
-                  <Icon name="Brain" size={48} className="animate-pulse text-emerald-500" />
+                  <div className="relative">
+                    <Icon name="Brain" size={48} className="animate-pulse text-emerald-500" />
+                    <div className="absolute -inset-2 bg-emerald-400/20 rounded-full animate-ping opacity-20"></div>
+                  </div>
                 ) : (
                   <Icon name="UploadCloud" size={48} className={uploadProgress < 100 ? "animate-bounce" : ""} />
                 )}
               </div>
               <h3 className="text-2xl font-bold text-stone-900 mb-2">
-                {isAnalyzing ? "AI is analyzing content..." : uploadProgress < 100 ? "Uploading your photo..." : "Finalizing..."}
+                {isAnalyzing ? "Gemini AI is categorizing..." : uploadProgress < 100 ? "Uploading your photo..." : "Finalizing..."}
               </h3>
               <p className="text-stone-500 text-sm mb-6">
-                {isAnalyzing ? "Determining best category via Gemini Vision" : "Securely storing your West Texas memory"}
+                {isAnalyzing ? "Analyzing scene depth and context" : "Securely storing your West Texas memory"}
               </p>
               
               {!isAnalyzing && (
@@ -373,14 +434,14 @@ const Gallery: React.FC = () => {
               {isDragging ? "Drop to upload image" : "Share Your Experience"}
             </h3>
             <p className="text-stone-500 text-sm">
-              Drag and drop your RV life photos here. Our <strong>Gemini AI</strong> will automatically analyze the image to categorize it!
+              Drag and drop your RV life photos here. Our <strong>Gemini AI</strong> will analyze the scene to detect categories, titles, and descriptions!
             </p>
 
             <div className="flex flex-col gap-4 pt-4">
               <div className="flex flex-col sm:flex-row gap-2">
                 <input 
                   type="text" 
-                  placeholder="Tell us about this photo..."
+                  placeholder="Optional: Tell us your story..."
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
                   className="flex-1 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
@@ -565,7 +626,6 @@ const Gallery: React.FC = () => {
                       {categories.filter(c => c !== 'All').map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
-                      <option value="General">General</option>
                     </select>
                   </div>
 
