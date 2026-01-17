@@ -1,18 +1,18 @@
 
 import { GoogleGenAI } from "@google/genai";
+import { GroundingSource } from "../types";
 
 const SYSTEM_INSTRUCTION = `
-You are the "Mountain View RV Assistant". 
-Your role is to help guests plan their stay at Mountain View RV Park in Van Horn, TX.
-You can provide information about:
-1. Park amenities (Wi-Fi, laundry, full hookups, pet-friendly policy).
-2. Nearby attractions (Guadalupe Mountains National Park, McDonald Observatory, Marfa, Pratt Lodge).
-3. Travel tips for RV owners traveling through West Texas.
-4. Weather-related advice for high desert regions (cool nights, warm days).
-5. Local dining recommendations in Van Horn (Chuy's Restaurant - Elvis shrine, Van Horn Cattle Co).
+You are the "Mountain View RV Assistant" for Mountain View RV Park in Van Horn, TX. 
+Your primary goal is to help guests plan their stay and provide local information.
 
-Be friendly, professional, and outdoors-focused. If asked about rates, refer them to the website's rates section (Daily $45, Weekly $250, Monthly $650).
-Our location is Van Horn, TX, the gateway to the West Texas mountains.
+CAPABILITIES:
+1. Real-time Weather: You have access to Google Search. ALWAYS search for current weather and short-term forecasts for Van Horn, TX when asked about climate or trip timing.
+2. Park Info: Daily $45, Weekly $250, Monthly $650. Amenities include 30/50 amp full hookups, Wi-Fi, laundry, and pet areas.
+3. Local Guide: Recommend Guadalupe Mountains NP, McDonald Observatory, and local eats like Chuy's or Van Horn Cattle Co.
+
+STYLE:
+Be welcoming, helpful, and outdoors-focused. If search results provide specific URLs, they will be extracted for the user automatically.
 `;
 
 export async function getAssistantResponse(prompt: string) {
@@ -23,13 +23,33 @@ export async function getAssistantResponse(prompt: string) {
       contents: prompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
+        tools: [{ googleSearch: {} }],
         temperature: 0.7,
       },
     });
 
-    return response.text || "I'm sorry, I couldn't process that. How else can I help you today?";
+    const text = response.text || "I'm sorry, I couldn't process that. How else can I help you today?";
+    
+    // Extract grounding chunks
+    const sources: GroundingSource[] = [];
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (chunks) {
+      chunks.forEach((chunk: any) => {
+        if (chunk.web) {
+          sources.push({
+            title: chunk.web.title,
+            uri: chunk.web.uri
+          });
+        }
+      });
+    }
+
+    return { text, sources };
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "The assistant is currently taking a break. Please try again in a few moments.";
+    return { 
+      text: "The assistant is currently taking a break. Please try again in a few moments.",
+      sources: []
+    };
   }
 }

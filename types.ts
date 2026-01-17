@@ -13,8 +13,20 @@ export interface Rate {
   featured?: boolean;
 }
 
+export interface GroundingSource {
+  title?: string;
+  uri?: string;
+}
+
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  sources?: GroundingSource[];
+}
+
+export interface GalleryImage {
+  url: string;
+  title: string;
+  category: string;
 }

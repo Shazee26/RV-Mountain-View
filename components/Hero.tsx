@@ -20,6 +20,9 @@ const Hero: React.FC<HeroProps> = ({ onExplore }) => {
       </div>
 
       <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+        <div className="inline-block bg-emerald-500/20 backdrop-blur-md border border-emerald-400/30 text-emerald-300 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest mb-6">
+          Premium RV Destination
+        </div>
         <h1 className="text-4xl md:text-7xl text-white font-bold mb-6 leading-tight">
           Gateway to the West Texas <span className="text-emerald-400">Mountains</span>
         </h1>
@@ -32,7 +35,7 @@ const Hero: React.FC<HeroProps> = ({ onExplore }) => {
             className="w-full sm:w-auto bg-emerald-600 text-white px-8 py-4 rounded-full font-bold text-lg hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
           >
             <Icon name="Map" size={20} />
-            Explore Park Tabs
+            Explore Park
           </button>
           <a
             href="tel:+14322830123"
